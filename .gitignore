@@ -1,0 +1,6 @@
+external/
+win_proj/win_proj/Debug/
+win_proj/win_proj/Release/
+win_proj/win_proj/x64/
+win_proj/.vs/
+win_proj/Release/
