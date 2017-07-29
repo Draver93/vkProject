@@ -18,16 +18,19 @@ int main()
 	cWindow wnd(wClass, WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
 
 	cGraphic *grp = new cGraphic(&wnd);
-	grp->initInstance();
-	grp->initSurface();
-	grp->initPhysicalDevice();
-	grp->initLogicalDevice();
-	grp->initSwapChain();
-	grp->initDeviceQueue();
-	grp->initFramebuffer();
+	assert(grp->initInstance());
+	grp->setupDebugCallback();
+	assert(grp->initSurface());
+	assert(grp->initPhysicalDevice());
+	assert(grp->initLogicalDevice());
+	assert(grp->initSwapChain());
+
+	//grp->initDeviceQueue();
+	//grp->initFramebuffer();
+	delete grp;
 	while (true) 
 	{
-		grp->presentStep();
+		//grp->presentStep();
 	}
 
 	return 0;

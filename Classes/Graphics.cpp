@@ -1,4 +1,4 @@
-#include "Graphics.hpp"
+﻿#include "Graphics.hpp"
 
 bool cGraphic::initInstance()
 {
@@ -18,7 +18,7 @@ bool cGraphic::initInstance()
 
 	unsigned int extensionCount = 0;
 	std::vector<VkExtensionProperties> extensionProperties;
-	const char* extensionNames[] = { "VK_KHR_surface", "VK_KHR_win32_surface" };
+	const char* extensionNames[] = { "VK_KHR_surface", "VK_KHR_win32_surface",  "VK_EXT_debug_report"};
 
 	vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
 	extensionProperties.resize(extensionCount);
@@ -34,10 +34,16 @@ bool cGraphic::initInstance()
 	}
 	assert(checkWin32SurfaceExtension || checkSurfaceExtension);
 
-	createInfo.enabledExtensionCount = 2;
+	createInfo.enabledExtensionCount = 3;
 	createInfo.ppEnabledExtensionNames = extensionNames;
 
-	createInfo.enabledLayerCount = 0;
+	if (enableValidationLayers) {
+		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+		createInfo.ppEnabledLayerNames = validationLayers.data();
+	}
+	else {
+		createInfo.enabledLayerCount = 0;
+	}
 
 	VkResult result = vkCreateInstance(&createInfo, nullptr, &gInstance);
 	if (result != VK_SUCCESS) assert(false);
@@ -56,10 +62,11 @@ bool cGraphic::initSurface()
 	sci.pNext = nullptr;
 	sci.flags = 0;
 
+	auto CreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)vkGetInstanceProcAddr(gInstance, "vkCreateWin32SurfaceKHR");
 
 	VkResult result = vkCreateWin32SurfaceKHR(gInstance, &sci, nullptr, &gSurface);
 
-	if (result != VK_SUCCESS)
+	if (result != VK_SUCCESS || !CreateWin32SurfaceKHR)
 	{
 		assert(1 && "Error");
 		return false;
@@ -79,125 +86,117 @@ bool cGraphic::initPhysicalDevice()
 	std::vector<VkPhysicalDevice> aDevices(countDevices);
 	vkEnumeratePhysicalDevices(gInstance ,&countDevices, aDevices.data());
 
-	if (countDevices == 0)
+	if (countDevices == 0 || !isDeviceSuitable(&aDevices.at(0), &gSurface))
 	{
 		assert(1 && "Error");
 		return false;
 	}
+
 	gPhysicalDevice = aDevices.at(0);
 
-	//VkPhysicalDeviceProperties physDevProp;
-	//vkGetPhysicalDeviceProperties(aDevices.at(0), &physDevProp);
+	findQueueFamily(&gPhysicalDevice, &gSurface);
 
 	return true;
 }
 
 bool cGraphic::initLogicalDevice()
 {
-	VkResult result;
-	VkPhysicalDeviceMemoryProperties pdmp;
-	vkGetPhysicalDeviceMemoryProperties(gPhysicalDevice, &pdmp);
+	QueueFamilyIndices indices = findQueueFamily(&gPhysicalDevice, &gSurface);
 
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	std::set<int> uniqueQueueFamilies = { indices.graphicsFamily, indices.presentFamily };
 
-	uint32_t queue_family_count = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(gPhysicalDevice, &queue_family_count, NULL);
-	std::vector<VkQueueFamilyProperties> prop(queue_family_count);
-	vkGetPhysicalDeviceQueueFamilyProperties(gPhysicalDevice, &queue_family_count, prop.data());
-
-	VkDeviceQueueCreateInfo queueCreateInfo = {};
-	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfo.queueFamilyIndex = 0;
-	queueCreateInfo.queueCount = 1;
+	float queuePriority = 1.0f;
+	for (int queueFamily : uniqueQueueFamilies)
+	{
+		VkDeviceQueueCreateInfo queueCreateInfo;
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily;
+		queueCreateInfo.queueCount = 1;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+		queueCreateInfos.push_back(queueCreateInfo);
+	}
 	
-	float queuePriority[] = { 0.0f };
-	queueCreateInfo.pQueuePriorities = queuePriority;
+	VkPhysicalDeviceFeatures deviceFeatures = {};
 
 	VkDeviceCreateInfo deviceCreateInfo = {};
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.queueCreateInfoCount = 1;
-	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-
-
-	std::vector<const char *> layerNames;
-
-	const std::vector<const char*> validationLayers = {
-		"VK_LAYER_LUNARG_standard_validation"
-	};
-	deviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-	deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
-
-	deviceCreateInfo.enabledExtensionCount = 0;
-	deviceCreateInfo.ppEnabledExtensionNames = nullptr;
-
-	VkPhysicalDeviceFeatures pdf = {};
-	pdf.shaderClipDistance = VK_TRUE;
-	deviceCreateInfo.pEnabledFeatures = &pdf;
-	
-
-	result = vkCreateDevice(gPhysicalDevice, &deviceCreateInfo, nullptr, &gDevice);
+	deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
+	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+	if (enableValidationLayers) {
+		deviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+		deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
+	}
+	else {
+		deviceCreateInfo.enabledLayerCount = 0;
+	}
+	deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+	VkResult result = vkCreateDevice(gPhysicalDevice, &deviceCreateInfo, nullptr, &gDevice);
 
 	if (result != VK_SUCCESS)
 		return false;
+
+	vkGetDeviceQueue(gDevice, indices.graphicsFamily, 0, &gQueue);
 
 	return true;
 }
 
 bool cGraphic::initSwapChain()
 {
-	VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
+	SwapChainSupportDetails swapChainSupport = querySwapChainSupport(&gPhysicalDevice, &gSurface);
 
-	VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gPhysicalDevice, gSurface, &surfaceCapabilities);
-	surfaceResolution = surfaceCapabilities.currentExtent;
+	VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
+	VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
+	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-	VkSwapchainCreateInfoKHR ssci = {};
-	ssci.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	ssci.surface = gSurface;
-	ssci.minImageCount = 2;
-	ssci.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-	ssci.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
-	ssci.imageExtent = surfaceResolution;
-	ssci.imageArrayLayers = 1;
-	ssci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	ssci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	ssci.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	ssci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	ssci.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-	ssci.clipped = true;
-	ssci.oldSwapchain = VK_NULL_HANDLE;
+	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+	if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount)
+		imageCount = swapChainSupport.capabilities.maxImageCount;
 
-	result = vkCreateSwapchainKHR(gDevice, &ssci, nullptr, &gSwapChain);
-	if (result != VK_SUCCESS)
-		return false;
+	VkSwapchainCreateInfoKHR createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	createInfo.surface = gSurface;
+	createInfo.minImageCount = imageCount;
+	createInfo.imageFormat = surfaceFormat.format;
+	createInfo.imageColorSpace = surfaceFormat.colorSpace;
+	//createInfo.imageExtent = extent;
+	createInfo.imageArrayLayers = 1;
+	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-	gPresentImages.resize(ssci.minImageCount);
-	result = vkGetSwapchainImagesKHR(gDevice, gSwapChain, &ssci.minImageCount, gPresentImages.data());
-	if (result != VK_SUCCESS)
-		return false;
-	gImageViews.resize(ssci.minImageCount);
-	for (int i = 0; i < ssci.minImageCount; i++)
+	QueueFamilyIndices indeces = findQueueFamily(&gPhysicalDevice, &gSurface);
+	uint32_t queueFamilyIndeces[] = { (uint32_t)indeces.graphicsFamily, (uint32_t)indeces.presentFamily };
+
+	if (indeces.graphicsFamily != indeces.presentFamily)
 	{
-		VkImageViewCreateInfo ivci = {};
-		ivci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		ivci.format = VK_FORMAT_B8G8R8A8_UNORM;
-		ivci.components.r = VK_COMPONENT_SWIZZLE_R;
-		ivci.components.g = VK_COMPONENT_SWIZZLE_G;
-		ivci.components.b = VK_COMPONENT_SWIZZLE_B;
-		ivci.components.a = VK_COMPONENT_SWIZZLE_A;
-		ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		ivci.subresourceRange.baseMipLevel = 0;
-		ivci.subresourceRange.levelCount = 1;
-		ivci.subresourceRange.baseArrayLayer = 0;
-		ivci.subresourceRange.layerCount = 1;
-		ivci.image = gPresentImages.at(i);
+		createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		createInfo.queueFamilyIndexCount = 2;
+		createInfo.pQueueFamilyIndices = queueFamilyIndeces;
+	}
+	else
+	{
+		createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		createInfo.queueFamilyIndexCount = 0;
+		createInfo.pQueueFamilyIndices = nullptr;
+	}
+	createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	createInfo.presentMode = presentMode;
+	createInfo.clipped = VK_TRUE;
 
-		result = vkCreateImageView(gDevice, &ivci, nullptr, &gImageViews.at(i));
-		if (result != VK_SUCCESS)
-			return false;
+	createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+	VkResult result = vkCreateSwapchainKHR(gDevice, &createInfo, nullptr, &gSwapChain);
+
+	if (result != VK_SUCCESS)
+	{
+		return false;
 	}
 
 	return true;
 }
+
 
 bool cGraphic::initDeviceQueue()
 {
@@ -209,7 +208,7 @@ bool cGraphic::initDeviceQueue()
 	std::vector<VkQueueFamilyProperties> prop(queue_family_count);
 	vkGetPhysicalDeviceQueueFamilyProperties(gPhysicalDevice, &queue_family_count, prop.data());
 
-	vkGetDeviceQueue(gDevice, queue_family_count, 0, &gPresentQueue);
+	vkGetDeviceQueue(gDevice, queue_family_count, 0, &gQueue);
 
 	
 
@@ -355,7 +354,7 @@ void cGraphic::presentStep()
 	si.signalSemaphoreCount = 0;
 	si.pSignalSemaphores = VK_NULL_HANDLE;
 
-	vkQueueSubmit(gPresentQueue, 1, &si, renderFence);
+	vkQueueSubmit(gQueue, 1, &si, renderFence);
 
 	vkWaitForFences(gDevice, 1, &renderFence, VK_TRUE, UINT64_MAX);
 	vkDestroyFence(gDevice, renderFence, nullptr);
@@ -370,10 +369,217 @@ void cGraphic::presentStep()
 	pi.pImageIndices = &nextImageIdx;
 	pi.pResults = nullptr;
 
-	vkQueuePresentKHR(gPresentQueue, &pi);
+	vkQueuePresentKHR(gQueue, &pi);
 }
 
 cGraphic::~cGraphic()
 {
 	vkDestroyInstance(gInstance, NULL);
 }
+
+
+QueueFamilyIndices cGraphic::findQueueFamily(VkPhysicalDevice *pDevice, VkSurfaceKHR *pSurface)
+{
+	QueueFamilyIndices indices;
+
+	uint32_t queueFamilyCount = 0;
+
+	vkGetPhysicalDeviceQueueFamilyProperties(*pDevice, &queueFamilyCount, NULL);
+	std::vector<VkQueueFamilyProperties> prop(queueFamilyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(*pDevice, &queueFamilyCount, prop.data());
+
+
+	int i = 0;
+
+
+	for (const auto& queueFamily : prop)
+	{
+		if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+		{
+			indices.graphicsFamily = i;
+		}
+		VkBool32 presentSupport = false;
+		vkGetPhysicalDeviceSurfaceSupportKHR(*pDevice, i, *pSurface, &presentSupport);
+		if (queueFamily.queueCount > 0 && presentSupport)
+		{
+			indices.presentFamily = i;
+		}
+		if (indices.isComplete()) break;
+
+		i++;
+	}
+
+	return indices;
+}
+SwapChainSupportDetails cGraphic::querySwapChainSupport(VkPhysicalDevice * pDevice, VkSurfaceKHR *pSurface)
+{
+	SwapChainSupportDetails details;
+
+	VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(*pDevice, gSurface, &details.capabilities);
+
+	uint32_t formatCount = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(*pDevice, *pSurface, &formatCount, nullptr);
+	if (formatCount != 0)
+	{
+		details.formats.resize(formatCount);
+		vkGetPhysicalDeviceSurfaceFormatsKHR(*pDevice, *pSurface, &formatCount, details.formats.data());
+	}
+
+	uint32_t presentModeCount = 0;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(*pDevice, *pSurface, &presentModeCount, nullptr);
+	
+	if (presentModeCount != 0)
+	{
+		details.presentModes.resize(presentModeCount);
+		vkGetPhysicalDeviceSurfacePresentModesKHR(*pDevice, *pSurface, &presentModeCount, details.presentModes.data());
+	}
+
+
+	return details;
+}
+bool cGraphic::isDeviceSuitable(VkPhysicalDevice *pDevice, VkSurfaceKHR *pSurface)
+{
+	QueueFamilyIndices indeces = findQueueFamily(pDevice, pSurface);
+
+	bool extensionsSupported = checkDeviceExtensionSupport(pDevice);
+	bool swapChainSupportAdequate = false;
+	if (extensionsSupported)
+	{
+		SwapChainSupportDetails details = querySwapChainSupport(pDevice, pSurface);
+		swapChainSupportAdequate = !details.formats.empty() && !details.presentModes.empty();
+	}
+
+	return indeces.isComplete() && extensionsSupported && swapChainSupportAdequate;
+}
+
+bool cGraphic::checkDeviceExtensionSupport(VkPhysicalDevice * pDevice)
+{
+	//Показывает допустимые расширения и удаляет из нашего запроса расширения которые нашел. 
+	uint32_t extensionCount;
+
+	vkEnumerateDeviceExtensionProperties(*pDevice, nullptr, &extensionCount, nullptr);
+	std::vector<VkExtensionProperties> avilableExtension(extensionCount);
+
+	vkEnumerateDeviceExtensionProperties(*pDevice, nullptr, &extensionCount, avilableExtension.data());
+
+	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+
+	for (const auto& extension : avilableExtension)
+	{
+		requiredExtensions.erase(extension.extensionName);
+	}
+
+	return requiredExtensions.empty();
+}
+
+bool cGraphic::checkValidationLayerSupport()
+{
+	uint32_t layerCount;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+	for (const char* layerName : validationLayers) 
+	{
+		bool layerFound = false;
+
+		for (const auto& layerProperties : availableLayers) 
+		{
+			if (strcmp(layerName, layerProperties.layerName) == 0) 
+			{
+				layerFound = true;
+				break;
+			}
+		}
+
+		if (!layerFound) return false;
+	}
+
+	return true;
+}
+
+VkSurfaceFormatKHR cGraphic::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& avilableFormats)
+{
+	if (avilableFormats.size() == 1 && avilableFormats.at(0).format == VK_FORMAT_UNDEFINED)
+	{
+		return { VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
+	}
+
+	for (const auto& avilableFormat : avilableFormats)
+	{
+		if (avilableFormat.format == VK_FORMAT_B8G8R8A8_UNORM && avilableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+		{
+			return avilableFormat;
+		}
+	}
+	return avilableFormats.at(0);
+}
+VkPresentModeKHR cGraphic::chooseSwapPresentMode(const std::vector<VkPresentModeKHR> availablePresentModes)
+{
+	for (const auto& availablePresentMode : availablePresentModes)
+	{
+		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+		{
+			return availablePresentMode;
+		}
+		else if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
+		{
+			return availablePresentMode;
+		}
+	}
+	return VK_PRESENT_MODE_FIFO_KHR;
+}
+VkExtent2D cGraphic::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+{
+	if (capabilities.currentExtent.width != (std::numeric_limits<uint32_t>::max)())
+	{
+		return capabilities.currentExtent;
+	}
+	else
+	{
+		VkExtent2D actualExtent = { 0,0 };
+		actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+		actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
+
+		return actualExtent;
+	}
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+	VkDebugReportFlagsEXT flags,
+	VkDebugReportObjectTypeEXT objType,
+	uint64_t obj,
+	size_t location,
+	int32_t code,
+	const char* layerPrefix,
+	const char* msg,
+	void* userData) {
+
+	std::cerr << "validation layer: " << msg << std::endl;
+
+	return VK_FALSE;
+}
+VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCallbackCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback)
+{
+	auto func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
+	if (func != nullptr) {
+		return func(instance, pCreateInfo, pAllocator, pCallback);
+	}
+	else {
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+void cGraphic::setupDebugCallback()
+{
+	if (!enableValidationLayers) return;
+	VkDebugReportCallbackCreateInfoEXT createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+	createInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+	createInfo.pfnCallback = debugCallback;
+	VkResult result = CreateDebugReportCallbackEXT(gInstance, &createInfo, nullptr, &callback);
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("failed to set up debug callback!");
+	}
+}
+
