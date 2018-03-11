@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source">
+      <UniqueIdentifier>{da2e2695-8b80-49bd-95b6-efc755036b34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\entrance">
+      <UniqueIdentifier>{066eaebe-fe64-4625-865d-5083d387c6b8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\window">
+      <UniqueIdentifier>{3a38e229-1398-4196-8689-def85aa0f38a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\graphics">
+      <UniqueIdentifier>{0a1bfd42-6f24-42f1-848c-8d91a0ea3c4a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\source\entrance\Entrance.cpp">
+      <Filter>Source\entrance</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\window\Window.cpp">
+      <Filter>Source\window</Filter>
+    </ClCompile>
+    <ClCompile Include="..\source\graphics\Graphics.cpp">
+      <Filter>Source\graphics</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\source\entrance\Entrance.hpp">
+      <Filter>Source\entrance</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\window\Window.hpp">
+      <Filter>Source\window</Filter>
+    </ClInclude>
+    <ClInclude Include="..\source\graphics\Graphics.hpp">
+      <Filter>Source\graphics</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

@@ -1,6 +1,8 @@
-external/
-win_proj/win_proj/Debug/
-win_proj/win_proj/Release/
-win_proj/win_proj/x64/
-win_proj/.vs/
-win_proj/Release/
+vk_1/app/external/
+vk_1/app/Debug/
+vk_1/app/Release/
+vk_1/app/x64/
+vk_1/app/.vs/
+vk_1/app/app/Debug/
+vk_1/app/app/Release/
+vk_1/app/app/x64/

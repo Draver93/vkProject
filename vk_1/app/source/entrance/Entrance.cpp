@@ -1,5 +1,4 @@
-#include "Main.hpp"
-
+#include "Entrance.hpp"
 
 int main()
 {
@@ -15,19 +14,14 @@ int main()
 	wClass.cbClsExtra = 0;
 	wClass.cbWndExtra = 0;
 
-	cWindow wnd(wClass, WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+	cWindow wnd(wClass, WS_VISIBLE);
 
-	cGraphic *grp = new cGraphic(&wnd);
-	grp->initInstance();
-	grp->initSurface();
-	grp->initPhysicalDevice();
-	grp->initLogicalDevice();
-	grp->initSwapChain();
-	grp->initDeviceQueue();
-	grp->initFramebuffer();
-	while (true) 
+	cGraphics *g = new cGraphics(wnd.getHWND(), wnd.getHInstance());
+	sData *data = g->getData();
+
+	while (true)
 	{
-		grp->presentStep();
+		g->drawFrame();
 	}
 
 	return 0;
