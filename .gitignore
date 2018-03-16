@@ -1,8 +1,5 @@
-vk_1/app/external/
-vk_1/app/Debug/
-vk_1/app/Release/
-vk_1/app/x64/
-vk_1/app/.vs/
-vk_1/app/app/Debug/
-vk_1/app/app/Release/
-vk_1/app/app/x64/
+**/Debug
+**/Release
+**/x64
+**/.vs
+**/external
