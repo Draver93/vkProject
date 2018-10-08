@@ -3,11 +3,10 @@
 
 #define VK_USE_PLATFORM_WIN32_KHR
 
-
+#include <vector>
 #include <Windows.h>
 #include <iostream>
 #include <fstream>
-#include <vector>
 
 #include "shaderc/shaderc.hpp"
 #include "vulkan/vulkan.h"
